@@ -2,7 +2,7 @@
 * Author:        Alec Selfridge
 * Filename:      SHARP_IR.cpp
 * Date Created:  11/03/2016
-* Last Modified: 02/15/2017
+* Last Modified: 03/14/2017
 * Device:        LPC1768 (mbed LPC1768)
  *************************************/
 #include "SHARP_IR.h"
@@ -21,6 +21,7 @@ void SHARP_IR::init()
 {
   // configure the pin
   configADC();
+  update();
 }
 
 void SHARP_IR::init(float AD)
@@ -28,6 +29,7 @@ void SHARP_IR::init(float AD)
   alertDistance = AD;   // assign the given alert distance
   // configure the pin
   configADC();
+  update();
 }
 
 void SHARP_IR::configADC()
