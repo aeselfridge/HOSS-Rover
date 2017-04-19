@@ -2,7 +2,7 @@
 * Author:        Alec Selfridge
 * Filename:      SHARP_IR.cpp
 * Date Created:  11/03/2016
-* Last Modified: 03/14/2017
+* Last Modified: 04/19/2017
 * Device:        LPC1768 (mbed LPC1768)
  *************************************/
 #include "SHARP_IR.h"
@@ -78,7 +78,9 @@ void SHARP_IR::readADC()
 // this should be of no consequence in most cases
 void SHARP_IR::update()
 {
-  // start ADC 
+  // clear any previous ADC selections
+  AD0CR &= 0xFFFFFF00;
+  // select ADC 
   switch(ADCchannel)
   {
     // P0.23
