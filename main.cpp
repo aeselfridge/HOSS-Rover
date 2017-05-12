@@ -4,19 +4,19 @@
  * VERSION:       1.2
  * PROJECT:       HOSS Rover
  * DATE CREATED:  02/02/2017
- * LAST MODIFIED: 05/10/2017
+ * LAST MODIFIED: 05/12/2017
  */
-#include <math.h>
-#include <LPC17xx.h>
+#include <math.h>                  // only for ceil() 
+#include <LPC17xx.h>               // only for SystemInit()
 #include "SPLC780D.h"
 #include "LPC1768regmap.h"
 #include "SHARP_IR.h"
 
 // buttons & debouncing parameters
-#define BTN1_PIN           0       // P0.8 - dip 6
-#define BTN2_PIN           1       // P0.9 - dip 5
-#define BTN3_PIN           7       // P0.7 - dip 7
-#define BTN4_PIN           6       // P0.6 - dip 8
+#define BTN1_PIN           0       // P0.8 - DIP6
+#define BTN2_PIN           1       // P0.9 - DIP5
+#define BTN3_PIN           7       // P0.7 - DIP7
+#define BTN4_PIN           6       // P0.6 - DIP8
 #define DEBOUNCE_MS        20
 #define SYSTICK_LOAD_VALUE 99999   // 1ms
 #define SYSTICK_ENABLE     0
@@ -35,15 +35,16 @@
 #define RUNNING_STATE      2
 #define STOP_STATE         3
 #define NUMBASE            48
+// IR parameters
+#define IR1_PIN            5       // IR sensor on ADC0.5
+#define IR2_PIN            4       // IR sensor on ADC0.4
 // motor parameters
-#define M1_PIN             4       // P2.4
-#define M2_PIN             3       // P2.3
+#define DWHEEL             80      // diameter of wheel (mm)
+#define STEPS_PER_REV      200     // steps per revolution of the chosen motor
+#define DIST_PER_STEP      (PI*DWHEEL/STEPS_PER_REV);
+#define M1_PIN             4       // P2.4 - DIP
+#define M2_PIN             3       // P2.3 - DIP
 #define PI                 3.14159
-/*
-#define HALFSPD            0x3f69c // 259740
-#define THREEQTRSPD        0x5f1ea // 389610
-#define FULLSPD            0x7ed38 // 519480
-*/
 #define IRSPACE            25.4    // 1" = 25.4, 1.25" = 31.75, 1.5" = 38.1, 1.75" = 44.45
                                    // 2" = 50.8, 2.25" = 57.15, 2.5" = 63.5, 2.75" = 69.85 
                                    // 3" = 76.2, 3.25" = 82.55, 3.5" = 88.9, 3.75" = 95.25
@@ -51,7 +52,12 @@
 #define HALFSPD            0x3f69c // 259740
 #define THREEQTRSPD        0x2f8f5 // 194805
 #define FULLSPD            0x1fb4e // 129870
-
+// alternate speed values
+/* 
+#define HALFSPD            0x3f69c // 259740
+#define THREEQTRSPD        0x5f1ea // 389610
+#define FULLSPD            0x7ed38 // 519480
+*/
 
 // system initialization functions
 void initGPIO(void);
@@ -76,8 +82,8 @@ void metersToFeet(void);
 void delay(int x);
 
 // IR objects
-SHARP_IR ir1 = SHARP_IR(5); // IR sensor on ADC0.5
-SHARP_IR ir2 = SHARP_IR(4); // IR sensor on ADC0.4
+SHARP_IR ir1 = SHARP_IR(IR1_PIN);
+SHARP_IR ir2 = SHARP_IR(IR2_PIN);
 
 // UI variables
 int btn1state   = 0;
@@ -96,25 +102,24 @@ float distance  = 5;        // user-provided distance
 float distanceM = 0;        // distance used by motors
 int state       = 1;
 bool menuState  = false;
-bool feet       = true;
+bool feet       = true;     // unit of distance set by user: true = feet, false = meters
 char str[3];                // array for displaying distance variable
 // motor control
 int m1State     = 0;
 int m2State     = 0;
 int T0MC, T1MC, totalSteps;
 int stepMax;
-float rWheel = 40;          // radius of wheel (mm)
 float linearMax, stepArc, linearDist;
 
 int main(void)
 {
   float ir1_dist   = 0;
-	float ir2_dist   = 0;
-	float speedMult1 = 1.0;
-	float speedMult2 = 1.0;
+  float ir2_dist   = 0;
+  float speedMult1 = 1.0;
+  float speedMult2 = 1.0;
   
   // system initializations
-  SystemInit();
+  SystemInit(); // initializes stack & heap
   initGPIO();
   initMotor();
   initTimers();
@@ -128,7 +133,7 @@ int main(void)
   
   while(1) {
 
-    // Start
+    // start
     if(state == START_STATE) { 
       if(btn2pressed == 1) {
         btn2pressed = 0;
@@ -151,6 +156,7 @@ int main(void)
           menuDisplay();
         }
       }
+      // confirm user parameters and calculate run-time values
       if(btn4pressed == 1) {
         btn4pressed = 0;
         if(menuState) {
@@ -158,11 +164,10 @@ int main(void)
           changeState();
           delay(7500);
           powerScreenDown();
-          // calculate single step arc
-          stepArc = ((2*PI*rWheel*((1.8)/360.0))); 
           // limits steps as a function of distance (in inches) between measurements and arc length distance
           stepMax = IRSPACE/stepArc;
           distanceM = distance;
+          // convert to metric if needed
           if(feet)
             distanceM = (distance*0.3048);
           // maximum linear travelled distance in millimeters
@@ -184,7 +189,7 @@ int main(void)
       }
     }
     
-    // Running
+    // running 
     else if(state == RUNNING_STATE) { 
       if(btn4pressed == 1) { // stop button breaks out of normal operation
         btn4pressed = 0;
@@ -237,7 +242,7 @@ int main(void)
           // update IR distance
           ir1.update();
           ir1_dist = ir1.getDistance();
-          // make a infinity reading a relatively large number
+          // make an infinity reading a relatively large number
           if(ir1_dist == -1)
             ir1_dist = 10;
           
@@ -269,7 +274,7 @@ int main(void)
           // start timers
           T0TCR = 1; T1TCR = 1;
         }
-        // Stopped
+        // stop and reset
         else {
           changeState();
           operationStopped();
@@ -277,13 +282,13 @@ int main(void)
       } // end of normal operation
     }
     
-    // Stopped state
-		else {
-			delay(7500);
+    // stopped state
+    else {
+      delay(7500);
       totalSteps = 0;
       changeState();
       menuDisplay();
-		}
+    }
   }
 }
 
@@ -303,39 +308,39 @@ void initGPIO(void)
 }
 
 void initMotor(void){
-	// configure as GPIO
-	PINSEL4 = 0x00000000;
-	// configure motor pins as outputs
-	FIO2DIR0 |= (1<<M1_PIN);
+  // configure as GPIO
+  PINSEL4 = 0x00000000;
+  // configure motor pins as outputs
+  FIO2DIR0 |= (1<<M1_PIN);
   FIO2DIR0 |= (1<<M2_PIN);
-	stepArc = ((2*PI*rWheel*(1.8/360.0)));//Calculate single step arc
-	stepMax = IRSPACE/stepArc; //Limits steps as a function of distance (in inches) between measurements and arc length distance
-	linearDist = 1066.8; //Maximum linear travelled distance in millimeters
-	linearMax = linearDist/stepArc;
+  stepArc = DIST_PER_STEP;
+  stepMax = IRSPACE/stepArc; //Limits steps as a function of distance (in inches) between measurements and arc length distance
+  linearDist = 1000.0; //Maximum linear travelled distance in millimeters
+  linearMax = linearDist/stepArc;
 }
 
 void initTimers(void)
 {
-//Enable PCTIM0,PCTIM1
-PCONP |= 0x00000006;
-//Set to utilize 1x clock speed
-PCLKSEL0 |= 0x00000014;
-//Set to interrupt on match. 
-//Timer 0 interrupts to Exception 17
-//Timer 1 interrupts to Exception 18
-T0MCR |= 6;  T1MCR |= 6;
+  //Enable PCTIM0,PCTIM1
+  PCONP |= 0x00000006;
+  //Set to utilize 1x clock speed
+  PCLKSEL0 |= 0x00000014;
+  //Set to interrupt on match. 
+  //Timer 0 interrupts to Exception 17
+  //Timer 1 interrupts to Exception 18
+  T0MCR |= 6;  T1MCR |= 6;
 
-//NVIC_EnableIRQ(TIMER0_IRQn);
-//NVIC_EnableIRQ(TIMER1_IRQn);
-//Run at 2x necessary frequency
-//Start at 378 matches/sec (2x50%)
-T0MR0 |= HALFSPD;
-T1MR0 |= HALFSPD;
-	
-//Set Match Count to 0
-T0MC = 0; T1MC = 0;
-//Start timer
-T0TCR |= 1; T1TCR |= 1;
+  //NVIC_EnableIRQ(TIMER0_IRQn);
+  //NVIC_EnableIRQ(TIMER1_IRQn);
+  //Run at 2x necessary frequency
+  //Start at 378 matches/sec (2x50%)
+  T0MR0 |= HALFSPD;
+  T1MR0 |= HALFSPD;
+    
+  //Set Match Count to 0
+  T0MC = 0; T1MC = 0;
+  //Start timer
+  T0TCR |= 1; T1TCR |= 1;
 }
 
 // initializes UART2 to a specified baud rate, 8N1
@@ -405,16 +410,16 @@ void initSysTick(void)
 
 void changeState(void)
 {
-	/* 
-   * 3 states: Start, Running, Stopped
-	 * 1 = Start
-	 * 2 = Running
-	 * 3 = Stopped
-   */
-	if(state == START_STATE)
-		state = RUNNING_STATE;
-	else if(state ==  RUNNING_STATE)
-		state = STOP_STATE;
+ /* 
+  * 3 states: Start, Running, Stopped
+  * 1 = Start
+  * 2 = Running
+  * 3 = Stopped
+  */
+  if(state == START_STATE)
+    state = RUNNING_STATE;
+  else if(state ==  RUNNING_STATE)
+    state = STOP_STATE;
   else
     state = START_STATE;
 }
@@ -422,42 +427,42 @@ void changeState(void)
 // displays the menu for adjusting the run distance
 void menuDisplay(void)
 {
-	intToChar(str, distance, 3);
-	putchar(LCD_CMD_PREFIX);
+  intToChar(str, distance, 3);
+  putchar(LCD_CMD_PREFIX);
   putchar(LCD_CLR);
-	putstring("SET DISTANCE - +", 0, 16);
-	putchar(LCD_CMD_PREFIX);
-	putchar(LCD_CURR_SET);
-	putchar(0x40);
-	if(feet) 
-		putstring("Feet: ", 0, 6);
-	else
-		putstring("Meters: ", 0, 8);
-	putstring(str, 0, 3);
+  putstring("SET DISTANCE - +", 0, 16);
+  putchar(LCD_CMD_PREFIX);
+  putchar(LCD_CURR_SET);
+  putchar(0x40);
+  if(feet) 
+    putstring("Feet: ", 0, 6);
+  else
+    putstring("Meters: ", 0, 8);
+  putstring(str, 0, 3);
 }
 
 // display the running state
 void startOperation(void)
 {
-	putchar(LCD_CMD_PREFIX);
+  putchar(LCD_CMD_PREFIX);
   putchar(LCD_CLR);
-	putstring("Running. . .", 0, 12);
+  putstring("Running. . .", 0, 12);
 }
 
 // wake the display and display the halt state
 void operationStopped(void)
 {
-	putchar(LCD_CMD_PREFIX);
+  putchar(LCD_CMD_PREFIX);
   putchar(LCD_DISP_ON);
-	putchar(LCD_CMD_PREFIX);
+  putchar(LCD_CMD_PREFIX);
   putchar(LCD_CLR);
-	putstring("Operation Halted", 0, 16);
+  putstring("Operation Halted", 0, 16);
 }
 
 // turns off the screen for power saving
 void powerScreenDown(void)
 {
-	putchar(LCD_CMD_PREFIX);
+  putchar(LCD_CMD_PREFIX);
   putchar(LCD_DISP_OFF);
 }
 
@@ -468,7 +473,7 @@ extern "C" {
     // read button states
     btn1state = (FIO0PIN1>>BTN1_PIN) & 0x01;
     btn2state = (FIO0PIN1>>BTN2_PIN) & 0x01;
-		btn3state = (FIO0PIN0>>BTN3_PIN) & 0x01;
+    btn3state = (FIO0PIN0>>BTN3_PIN) & 0x01;
     btn4state = (FIO0PIN0>>BTN4_PIN) & 0x01;
     
     // debounce button 1
@@ -491,7 +496,7 @@ extern "C" {
     if(btn2counter == DEBOUNCE_MS)
       btn2pressed = 1;
 		
-		// debounce button 3
+    // debounce button 3
     if(btn3state == 0) {
       btn3counter = 0;
       btn3pressed = 0;
@@ -563,22 +568,22 @@ void intToChar(char *arr, int num, int size)
 
 void feetToMeters(void)
 {
-	distance = ceil(distance*0.3048);
+  distance = ceil(distance*0.3048);
   feet = false;
-	if(distance < 1)
-		distance = 1;
+  if(distance < 1)
+    distance = 1;
 }
 
 void metersToFeet(void)
 {
-	distance = ceil(distance/0.3048);
+  distance = ceil(distance/0.3048);
   feet = true;
 }
 
 // cheap delay routine for arbitrary waits
 void delay(int x)
 {
-	for(int i = 0; i < x; i++){
-		for(int j = 0; j < x; j++) {}
-	}
+  for(int i = 0; i < x; i++){
+    for(int j = 0; j < x; j++) {}
+  }
 }
