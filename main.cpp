@@ -193,6 +193,7 @@ int main(void)
     else if(state == RUNNING_STATE) { 
       if(btn4pressed == 1) { // stop button breaks out of normal operation
         btn4pressed = 0;
+	totalSteps = 0;
         changeState();
         operationStopped();
       }
