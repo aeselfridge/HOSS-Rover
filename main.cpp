@@ -4,7 +4,7 @@
  * VERSION:       1.2
  * PROJECT:       HOSS Rover
  * DATE CREATED:  02/02/2017
- * LAST MODIFIED: 05/12/2017
+ * LAST MODIFIED: 05/16/2017
  */
 #include <math.h>                  // only for ceil() 
 #include <LPC17xx.h>               // only for SystemInit()
@@ -269,8 +269,8 @@ int main(void)
             speedMult2 = 0.0125;
             
           // recalculate timer match value
-          T0MR0 = speedMult1*HALFSPD;
-          T1MR0 = speedMult2*HALFSPD;
+          T0MR0 = speedMult2*HALFSPD;
+          T1MR0 = speedMult1*HALFSPD;
           // start timers
           T0TCR = 1; T1TCR = 1;
         }
