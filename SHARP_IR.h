@@ -18,10 +18,10 @@
 #define a2       49.66785
 #define a3      -21.14833
 #define a4        3.51488
+// misc
 #define ADCRES 4096.0
 #define ADCV      3.3
 #define CMTOIN    2.54
-// misc
 #define NUM_AVG  30
 
 class SHARP_IR
